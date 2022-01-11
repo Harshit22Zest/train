@@ -149,7 +149,7 @@ def get_annotations(blob_annotation_end_point, blob_image_end_point):
         print("Exception occurred in train : " + str(e_) + ' ' + str(exc_tb.tb_lineno))
 
 
-def config_generator(config, model_name, obj_file, model_type):
+def config_generator(config, model_name, obj_file, model_type, total_classes):
     print('config generator is called -> config = {} model_name = {} obj_file = {} model_type = {}'.format(config, model_name, obj_file, model_type))
     try:
         data = {"height": str(config.get('model_height')),
@@ -177,7 +177,7 @@ def config_generator(config, model_name, obj_file, model_type):
         print('starting 5 sec timer')
         time.sleep(5)
         print('time end')
-        class_num = 3
+        class_num = int(total_classes)
         print('stopping the anchor command')
         os.kill(anchor_command.pid, signal.SIGTERM)
         print('stopped')
@@ -234,10 +234,10 @@ def config_generator(config, model_name, obj_file, model_type):
         print("Exception in generating the config file : " + str(e_) + ' ' + str(exc_tb.tb_lineno))
 
 
-def MAP(data_file, name_file, cfg_file, weight_file, model_name):
+def MAP(data_file, name_file, cfg_file, weight_file, model_name, model_id):
     print('MAP is called')
     try:
-        print('model_name = {} ,obj_data_file = {},  model_cfg ={}, obj_name_file = {}, obj_weights_file = {} '.format(model_name, data_file, cfg_file, name_file, weight_file))
+        print('model_name = {} ,obj_data_file = {},  model_cfg ={}, obj_name_file = {}, obj_weights_file = {} ,model_id={}'.format(model_name, data_file, cfg_file, name_file, weight_file, model_id))
         data = {
             "obj_path": data_file,  # "/home/cvuser/HPCL_files/20_class_files/obj_20_class.data",
             "cfg_path": cfg_file,  # "/home/cvuser/HPCL_files/20_class_files/yolov4-tiny_20_class.cfg",
@@ -254,7 +254,7 @@ def MAP(data_file, name_file, cfg_file, weight_file, model_name):
         print("after decoding")
         out = ((out.decode()).split("mAP@0.50")[1]).split("%")[0][-6:-1]
         print("out = {}".format(out))
-        sql = '''update  m_model set Map = "{}" where name = "{}"'''.format(str(out), model_name)
+        sql = '''update  m_model set Map = "{}" where id = "{}"'''.format(str(out), model_id)
         rows_effected = connect.update_database(sql=sql)
     except Exception as e_:
         exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -279,6 +279,12 @@ def train(body):
         if not os.path.exists(train_test_end_point):
             print('creating the directory = {}'.format(train_test_end_point))
             os.makedirs(train_test_end_point)
+
+        test_file_path = os.path.join(train_test_artifacts_end_point, 'test.txt')
+        print('opening the files in write mode ')
+        print('test file path = {} exists = {}'.format(test_file_path, os.path.exists(test_file_path)))
+        train_file_path = os.path.join(train_test_artifacts_end_point, 'train.txt')
+        print('train file path = {} exists = {}'.format(train_file_path, os.path.exists(train_file_path)))
 
         for end_point in end_points:
             print('endpoint = {}'.format(end_point))
@@ -306,7 +312,7 @@ def train(body):
                             next_class_index = next_class_index + 1
                     for tag_index, tag_name in enumerate(tags_list):
                         index_mapper[tag_index] = tags_mapper[tag_name]
-                    next_class_index = next_class_index + len(tags_list)
+                    # next_class_index = next_class_index + len(tags_list)
 
                 print('tag_mapper = {},  index_mapper + {}, next_class_index = {}'.format(tags_mapper, index_mapper, next_class_index))
                 for _yolo_file in os.listdir(annotation_duration_end_point):
@@ -315,10 +321,11 @@ def train(body):
                         print('yolofile = {}'.format(yolo_file))
                         image_source_file = os.path.join(image_duration_end_point, os.path.split(yolo_file)[1].replace(".txt", ".jpg"))
                         print('image source  file = {}'.format(image_source_file))
-                        image_destination_file = os.path.join(train_test_end_point, '{}_{}'.format(next_image_count, os.path.split(yolo_file)[1]))
+                        image_destination_file = os.path.join(train_test_end_point, '{}_{}'.format(next_image_count, os.path.split(image_source_file)[1]))
                         print('image dest file = {}'.format(image_destination_file))
                         print("copying the file from = {} to = {}".format(image_source_file, image_destination_file))
-                        os.popen('cp {} {}'.format(image_source_file, image_destination_file))
+                        os.popen('cp {} {}'.format(image_source_file.replace(" ", "\\ "), image_destination_file))
+                        time.sleep(2)
                         print('copied')
                         print("opening the file {} in write mode and file = {} in read mode".format(os.path.join(train_test_end_point, "{}_{}".format(next_image_count, os.path.split(yolo_file)[1])), yolo_file))
                         with open(os.path.join(train_test_end_point, "{}_{}".format(next_image_count, os.path.split(yolo_file)[1])), 'w') as annotating_file, open(yolo_file) as annotated_file:
@@ -333,124 +340,128 @@ def train(body):
                             next_image_count = next_image_count + 1
                             print('next image count = {}'.format(next_image_count))
 
-            print('writing on file ={}'.format(os.path.join(train_test_end_point, "classes.txt")))
-            with open(os.path.join(train_test_end_point, "classes.txt"), 'w') as classes_file:
-                classes_string = '\n'.join(sorted(tags_mapper, key=tags_mapper.get))
-                print('classes string = {}'.format(classes_string))
-                classes_file.write(classes_string)
+        print('writing on file ={}'.format(os.path.join(train_test_end_point, "classes.txt")))
+        with open(os.path.join(train_test_end_point, "classes.txt"), 'w') as classes_file:
+            classes_string = '\n'.join(sorted(tags_mapper, key=tags_mapper.get))
+            print('classes string = {}'.format(classes_string))
+            classes_file.write(classes_string)
 
-            test_file_path = os.path.join(train_test_artifacts_end_point, 'test.txt')
-            print('opening the files in write mode ')
-            print('test file path = {} exists = {}'.format(test_file_path, os.path.exists(test_file_path)))
-            train_file_path = os.path.join(train_test_artifacts_end_point, 'train.txt')
-            print('train file path = {} exists = {}'.format(train_file_path, os.path.exists(train_file_path)))
+        test_file_path = os.path.join(train_test_artifacts_end_point, 'test.txt')
+        print('opening the files in write mode ')
+        print('test file path = {} exists = {}'.format(test_file_path, os.path.exists(test_file_path)))
+        train_file_path = os.path.join(train_test_artifacts_end_point, 'train.txt')
+        print('train file path = {} exists = {}'.format(train_file_path, os.path.exists(train_file_path)))
 
-            with open(test_file_path, 'w') as file_test, open(train_file_path, 'w') as file_train:
-                for i, j in enumerate(os.listdir(train_test_end_point)):
-                    if j[-4:] != '.txt' or 'classes' in j or 'artifacts' in j:
-                        continue
-                    if i % 5 == 0:
-                        file_test.write(os.path.join(train_test_end_point, j))
-                        file_test.write('\n')
-                    else:
-                        file_train.write(os.path.join(train_test_end_point, j))
-                        file_train.write('\n')
-            print('opening the files in write mode ={} '.format(os.path.join(train_test_artifacts_end_point, "obj.names")))
-            with open(os.path.join(train_test_artifacts_end_point, "obj.names"), 'w') as obj_names:
-                classes_string = ''.join(sorted(tags_mapper, key=tags_mapper.get))
-                print('writing the class string ={}'.format(classes_string))
-                obj_names.write(classes_string)
+        with open(test_file_path, 'w') as file_test, open(train_file_path, 'w') as file_train:
+            for i, j in enumerate(os.listdir(train_test_end_point)):
+                print(i, j)
+                if j[-4:] != '.jpg' or 'classes' in j or 'artifacts' in j:
+                    continue
+                if i % 5 == 0:
+                    print(i, j, "train.txt")
+                    file_test.write(os.path.join(train_test_end_point, j))
+                    file_test.write('\n')
+                else:
+                    print(i, j, "test.txt")
+                    file_train.write(os.path.join(train_test_end_point, j))
+                    file_train.write('\n')
+        print('opening the files in write mode ={} '.format(os.path.join(train_test_artifacts_end_point, "obj.names")))
 
-            print('backup  = {} exists = {}'.format(os.path.join(train_test_artifacts_end_point, "backup"), os.path.exists(os.path.join(train_test_artifacts_end_point, "backup"))))
-            if not os.path.exists(os.path.join(train_test_artifacts_end_point, "backup")):
-                print('creating the directory = {}'.format(os.path.join(train_test_artifacts_end_point, "backup")))
-                os.makedirs(os.path.join(train_test_artifacts_end_point, "backup"))
+        with open(os.path.join(train_test_artifacts_end_point, "obj.names"), 'w') as obj_names:
+            classes_string = '\n'.join(sorted(tags_mapper, key=tags_mapper.get))
+            print('writing the class string ={}'.format(classes_string))
+            obj_names.write(classes_string)
 
-            print('opening the files in write mode ={} '.format(os.path.join(train_test_artifacts_end_point, "obj.data")))
-            with open(os.path.join(train_test_artifacts_end_point, "obj.data"), 'w') as obj_data:
-                obj_data.write("class = {}\n".format(len(tags_mapper)))
-                obj_data.write("train = {}\n".format(train_file_path))
-                obj_data.write("valid = {}\n".format(test_file_path))
-                obj_data.write("names = {}\n".format(os.path.join(train_test_artifacts_end_point, "obj.names")))
-                obj_data.write("backup = {}\n".format(os.path.join(train_test_artifacts_end_point, "backup")))
+        print('backup  = {} exists = {}'.format(os.path.join(train_test_artifacts_end_point, "backup"), os.path.exists(os.path.join(train_test_artifacts_end_point, "backup"))))
+        if not os.path.exists(os.path.join(train_test_artifacts_end_point, "backup")):
+            print('creating the directory = {}'.format(os.path.join(train_test_artifacts_end_point, "backup")))
+            os.makedirs(os.path.join(train_test_artifacts_end_point, "backup"))
 
-            obj_names_file = os.path.join(train_test_artifacts_end_point, "obj.names")
-            obj_data_file = os.path.join(train_test_artifacts_end_point, "obj.data")
-            # azure_storage.download(body.get("config_end_point"), os.path.join(train_test_artifacts_end_point, os.path.split(body.get("config_end_point"))[1]), container_name=connect.config_json.get("model_container"))
+        print('opening the files in write mode ={} '.format(os.path.join(train_test_artifacts_end_point, "obj.data")))
+        with open(os.path.join(train_test_artifacts_end_point, "obj.data"), 'w') as obj_data:
+            obj_data.write("class = {}\n".format(len(tags_mapper)))
+            obj_data.write("train = {}\n".format(train_file_path))
+            obj_data.write("valid = {}\n".format(test_file_path))
+            obj_data.write("names = {}\n".format(os.path.join(train_test_artifacts_end_point, "obj.names")))
+            obj_data.write("backup = {}\n".format(os.path.join(train_test_artifacts_end_point, "backup")))
 
-            if not os.path.exists(os.path.join(train_test_artifacts_end_point, os.path.split(body.get("conv_end_point"))[1])):
-                azure_storage.download(body.get("conv_end_point"), os.path.join(train_test_artifacts_end_point, os.path.split(body.get("conv_end_point"))[1]), container_name=connect.config_json["model_container"])
+        obj_names_file = os.path.join(train_test_artifacts_end_point, "obj.names")
+        obj_data_file = os.path.join(train_test_artifacts_end_point, "obj.data")
+        # azure_storage.download(body.get("config_end_point"), os.path.join(train_test_artifacts_end_point, os.path.split(body.get("config_end_point"))[1]), container_name=connect.config_json.get("model_container"))
 
-            model_cfg = config_generator(body.get('config'), body.get('model_name'), obj_data_file, body.get("model_type"))
-            # add a condition if conv endpoint file is not in server then download it otherwise not
-            with open(os.path.join(train_test_artifacts_end_point, "input.txt"), "w+") as input_data:
-                input_data.write("image_end_point = {}, exits = {} \n".format(local_image_end_point, os.path.exists(local_image_end_point)))
-                input_data.write("annotation_end_point = {} , exits = {} \n".format(local_annotation_end_point, os.path.exists(local_annotation_end_point)))
-                input_data.write("names file endpoint = {} , exits = {}\n".format(os.path.join(train_test_artifacts_end_point, "obj.names"), os.path.exists(os.path.join(train_test_artifacts_end_point, "obj.names"))))
-                input_data.write("data file endpoint = {}, exits = {}\n".format(os.path.join(train_test_artifacts_end_point, "obj.data"), os.path.exists(os.path.join(train_test_artifacts_end_point, "obj.data"))))
-                input_data.write("conv file endpoint = {}, exits = {} \n".format(os.path.join(train_test_artifacts_end_point, os.path.split(body.get("conv_end_point"))[1]), os.path.exists(os.path.join(train_test_artifacts_end_point, os.path.split(body.get("conv_end_point"))[1]))))
-                # input_data.write("sample cfg file endpoint = {}, exits = {}\n".format(os.path.join(train_test_artifacts_end_point,"sample.cfg"),  os.path.exists(os.path.join(train_test_artifacts_end_point,"sample.cfg"))))
-                input_data.write("new created cfg file endpoint = {}, exits = {} \n".format(model_cfg, os.path.exists(model_cfg)))
+        if not os.path.exists(os.path.join(train_test_artifacts_end_point, os.path.split(body.get("conv_end_point"))[1])):
+            azure_storage.download(body.get("conv_end_point"), os.path.join(train_test_artifacts_end_point, os.path.split(body.get("conv_end_point"))[1]), container_name=connect.config_json["model_container"])
 
-            try:
-                print("Training started")
-                os.chdir(os.path.join(connect.config_json["working_directory_train"], "darknet"))
-                print(" ".join(["./darknet", "detector", "train", os.path.join(train_test_artifacts_end_point, "obj.data"), os.path.join(train_test_artifacts_end_point, os.path.split(model_cfg)[1]), os.path.join(train_test_artifacts_end_point, os.path.split(body.get("conv_end_point"))[1]), "-map", "-dont_show"]))
-                subprocess.run(["./darknet", "detector", "train", os.path.join(train_test_artifacts_end_point, "obj.data"), os.path.join(train_test_artifacts_end_point, os.path.split(model_cfg)[1]), os.path.join(train_test_artifacts_end_point, os.path.split(body.get("conv_end_point"))[1]), "-map", "-dont_show"])
-                print("Training completed")
-            except Exception as e_:
-                exc_type, exc_obj, exc_tb = sys.exc_info()
-                print("Exception in training : " + str(e_) + ' ' + str(exc_tb.tb_lineno))
+        model_cfg = config_generator(body.get('config'), body.get('model_name'), obj_data_file, body.get("model_type"), body.get('total_classes'))
+        # add a condition if conv endpoint file is not in server then download it otherwise not
+        with open(os.path.join(train_test_artifacts_end_point, "input.txt"), "w+") as input_data:
+            # input_data.write("image_end_point = {}, exits = {} \n".format(local_image_end_point, os.path.exists(local_image_end_point)))
+            # input_data.write("annotation_end_point = {} , exits = {} \n".format(local_annotation_end_point, os.path.exists(local_annotation_end_point)))
+            input_data.write("names file endpoint = {} , exits = {}\n".format(os.path.join(train_test_artifacts_end_point, "obj.names"), os.path.exists(os.path.join(train_test_artifacts_end_point, "obj.names"))))
+            input_data.write("data file endpoint = {}, exits = {}\n".format(os.path.join(train_test_artifacts_end_point, "obj.data"), os.path.exists(os.path.join(train_test_artifacts_end_point, "obj.data"))))
+            input_data.write("conv file endpoint = {}, exits = {} \n".format(os.path.join(train_test_artifacts_end_point, os.path.split(body.get("conv_end_point"))[1]), os.path.exists(os.path.join(train_test_artifacts_end_point, os.path.split(body.get("conv_end_point"))[1]))))
+            # input_data.write("sample cfg file endpoint = {}, exits = {}\n".format(os.path.join(train_test_artifacts_end_point,"sample.cfg"),  os.path.exists(os.path.join(train_test_artifacts_end_point,"sample.cfg"))))
+            input_data.write("new created cfg file endpoint = {}, exits = {} \n".format(model_cfg, os.path.exists(model_cfg)))
 
-            print('uploading the file from ={} to = {}'.format(os.path.join(train_test_artifacts_end_point, "obj.data"), os.path.join(connect.config_json["deployment_models"], body.get("model_name") + "/obj.data")))
-            azure_storage.upload(os.path.join(train_test_artifacts_end_point, "obj.data"), os.path.join(connect.config_json["deployment_models"], body.get("model_name") + "/obj.data"), container_name=connect.config_json["model_container"])
-            print('uploaded')
+        try:
+            print("Training started")
+            os.chdir(os.path.join(connect.config_json["working_directory_train"], "darknet"))
+            print(" ".join(["./darknet", "detector", "train", os.path.join(train_test_artifacts_end_point, "obj.data"), os.path.join(train_test_artifacts_end_point, os.path.split(model_cfg)[1]), os.path.join(train_test_artifacts_end_point, os.path.split(body.get("conv_end_point"))[1]), "-map", "-dont_show"]))
+            subprocess.run(["./darknet", "detector", "train", os.path.join(train_test_artifacts_end_point, "obj.data"), os.path.join(train_test_artifacts_end_point, os.path.split(model_cfg)[1]), os.path.join(train_test_artifacts_end_point, os.path.split(body.get("conv_end_point"))[1]), "-map", "-dont_show"])
+            print("Training completed")
+        except Exception as e_:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            print("Exception in training : " + str(e_) + ' ' + str(exc_tb.tb_lineno))
 
-            print('uploading the file from ={} to = {}'.format(os.path.join(train_test_artifacts_end_point, "obj.names"), os.path.join(connect.config_json["deployment_models"], body.get("model_name") + "/obj.names")))
-            azure_storage.upload(os.path.join(train_test_artifacts_end_point, "obj.names"), os.path.join(connect.config_json["deployment_models"], body.get("model_name") + "/obj.names"), container_name=connect.config_json["model_container"])
-            print('uploaded')
+        print('uploading the file from ={} to = {}'.format(os.path.join(train_test_artifacts_end_point, "obj.data"), os.path.join(connect.config_json["deployment_models"], body.get("model_name") + "/obj.data")))
+        azure_storage.upload(os.path.join(train_test_artifacts_end_point, "obj.data"), os.path.join(connect.config_json["deployment_models"], body.get("model_name") + "/obj.data"), container_name=connect.config_json["model_container"])
+        print('uploaded')
 
-            print('uploading the file from ={} to = {}'.format(os.path.join(train_test_artifacts_end_point, "input.txt"), os.path.join(connect.config_json["deployment_models"], body.get("model_name") + "/input.txt")))
-            azure_storage.upload(os.path.join(train_test_artifacts_end_point, "input.txt"), os.path.join(connect.config_json["deployment_models"], body.get("model_name") + "/input.txt"), container_name=connect.config_json["model_container"])
-            print('uploaded')
+        print('uploading the file from ={} to = {}'.format(os.path.join(train_test_artifacts_end_point, "obj.names"), os.path.join(connect.config_json["deployment_models"], body.get("model_name") + "/obj.names")))
+        azure_storage.upload(os.path.join(train_test_artifacts_end_point, "obj.names"), os.path.join(connect.config_json["deployment_models"], body.get("model_name") + "/obj.names"), container_name=connect.config_json["model_container"])
+        print('uploaded')
 
-            local_config_path = model_cfg
-            print('uploading the file from ={} to = {}'.format(local_config_path, os.path.join(os.path.join(connect.config_json["deployment_models"], body.get("model_name")), os.path.split(local_config_path)[1])))
-            azure_storage.upload(local_config_path, os.path.join(os.path.join(connect.config_json["deployment_models"], body.get("model_name")), os.path.split(local_config_path)[1]), container_name=connect.config_json["model_container"])
-            print('uploaded')
+        print('uploading the file from ={} to = {}'.format(os.path.join(train_test_artifacts_end_point, "input.txt"), os.path.join(connect.config_json["deployment_models"], body.get("model_name") + "/input.txt")))
+        azure_storage.upload(os.path.join(train_test_artifacts_end_point, "input.txt"), os.path.join(connect.config_json["deployment_models"], body.get("model_name") + "/input.txt"), container_name=connect.config_json["model_container"])
+        print('uploaded')
 
-            print('backup = {}, it contains = {}'.format(os.path.join(train_test_artifacts_end_point, "backup"), os.listdir(os.path.join(train_test_artifacts_end_point, "backup"))))
-            model_file = [f for f in os.listdir(os.path.join(train_test_artifacts_end_point, "backup")) if os.path.isfile(os.path.join(os.path.join(train_test_artifacts_end_point, "backup"), f))]
-            weight_file = os.path.join(connect.config_json["deployment_models"], os.path.join(body.get("model_name"), model_file[0]))
-            print('uploading the file from ={} to = {}'.format(os.path.join(os.path.join(train_test_artifacts_end_point, "backup"), model_file[0]), os.path.join(connect.config_json["deployment_models"], os.path.join(body.get("model_name"), model_file[0]))))
-            azure_storage.upload(os.path.join(os.path.join(train_test_artifacts_end_point, "backup"), model_file[0]), os.path.join(connect.config_json["deployment_models"], os.path.join(body.get("model_name"), model_file[0])), container_name=connect.config_json["model_container"])
-            print('uploaded')
+        local_config_path = model_cfg
+        print('uploading the file from ={} to = {}'.format(local_config_path, os.path.join(os.path.join(connect.config_json["deployment_models"], body.get("model_name")), os.path.split(local_config_path)[1])))
+        azure_storage.upload(local_config_path, os.path.join(os.path.join(connect.config_json["deployment_models"], body.get("model_name")), os.path.split(local_config_path)[1]), container_name=connect.config_json["model_container"])
+        print('uploaded')
 
-            # local_config_path = os.path.join(train_test_artifacts_end_point, os.path.split(body.get("config_end_point"))[1])
+        print('backup = {}, it contains = {}'.format(os.path.join(train_test_artifacts_end_point, "backup"), os.listdir(os.path.join(train_test_artifacts_end_point, "backup"))))
+        model_file = [f for f in os.listdir(os.path.join(train_test_artifacts_end_point, "backup")) if os.path.isfile(os.path.join(os.path.join(train_test_artifacts_end_point, "backup"), f))]
+        weight_file = os.path.join(connect.config_json["deployment_models"], os.path.join(body.get("model_name"), model_file[0]))
+        print('uploading the file from ={} to = {}'.format(os.path.join(os.path.join(train_test_artifacts_end_point, "backup"), model_file[0]), os.path.join(connect.config_json["deployment_models"], os.path.join(body.get("model_name"), model_file[0]))))
+        azure_storage.upload(os.path.join(os.path.join(train_test_artifacts_end_point, "backup"), model_file[0]), os.path.join(connect.config_json["deployment_models"], os.path.join(body.get("model_name"), model_file[0])), container_name=connect.config_json["model_container"])
+        print('uploaded')
 
-            # clean_data(directories=[train_test_artifacts_end_point, local_annotation_end_point, local_image_end_point])
+        # local_config_path = os.path.join(train_test_artifacts_end_point, os.path.split(body.get("config_end_point"))[1])
 
-            blob_locations = [os.path.join(connect.config_json["deployment_models"], body.get("model_name") + "/obj.data"), os.path.join(connect.config_json["deployment_models"], body.get("model_name") + "/obj.names"), os.path.join(connect.config_json["deployment_models"], os.path.join(body.get("model_name"), model_file[0])), os.path.join(os.path.join(connect.config_json["deployment_models"], body.get("model_name")), os.path.split(local_config_path)[1])]
-            sql = '''update m_model set end_point = "{}" where name = "{}"'''.format(str(blob_locations), body.get("model_name"))
-            print('updating/ inserting  the table model endpoint = {} where name  = {}/ inserting the name and endpoint '.format(str(blob_locations), body.get("model_name")))
-            rows_effected = connect.update_database(sql=sql)
+        # clean_data(directories=[train_test_artifacts_end_point, local_annotation_end_point, local_image_end_point])
 
-            if not rows_effected:
-                sql = '''insert into m_model (end_point, name) values ("{}", "{}")'''.format(str(blob_locations), body.get("model_name"))
-                connect.update_database(sql=sql)
-            print('query done')
-            print('calling the link = {}'.format(os.path.join(connect.config_json.get("app_server_host") + "download_model")))
-            # requests.post(os.path.join(connect.config_json.get("app_server_host") + "download_model"), headers={"content-type": "text", "entity-location": json.dumps(connect.config_json.get("entity-location"))})
-            print('called')
-            end_datetime = datetime.now()
-            end = time.time()
-            task_result = {"user_id": str(body.get('user_id')), "name": "train done successfully for model name  {}".format(body.get('model_name')), "status": "Success", "time_taken": str(end - start), "start_datetime": str(start_datetime), "end_datetime": str(end_datetime)}
-            task_result = json.dumps(task_result)
-            check_task_status(task_result)
+        blob_locations = [os.path.join(connect.config_json["deployment_models"], body.get("model_name") + "/obj.data"), os.path.join(connect.config_json["deployment_models"], body.get("model_name") + "/obj.names"), os.path.join(connect.config_json["deployment_models"], os.path.join(body.get("model_name"), model_file[0])), os.path.join(os.path.join(connect.config_json["deployment_models"], body.get("model_name")), os.path.split(local_config_path)[1])]
+        # sql = '''update m_model set end_point = "{}" where name = "{}"'''.format(str(blob_locations), body.get("model_name"))
+        # print('updating/ inserting  the table model endpoint = {} where name  = {}/ inserting the name and endpoint '.format(str(blob_locations), body.get("model_name")))
+        # rows_effected = connect.update_database(sql=sql)
+        #
+        # if not rows_effected:
+        sql = '''insert into m_model (name, end_point, model_type_id, location_id) values ("{}", "{}","{}","{}")'''.format(body.get("model_name"), str(blob_locations), body.get("model_type_id"), body.get("location_id"))
+        model_id = connect.update_database_and_return_id(sql=sql)
+        print('query done')
+        print('calling the link = {}'.format(os.path.join(connect.config_json.get("app_server_host") + "download_model")))
+        # requests.post(os.path.join(connect.config_json.get("app_server_host") + "download_model"), headers={"content-type": "text", "entity-location": json.dumps(connect.config_json.get("entity-location"))})
+        print('called')
+        end_datetime = datetime.now()
+        end = time.time()
+        task_result = {"user_id": str(body.get('user_id')), "name": "train done successfully for model name  {}".format(body.get('model_name')), "status": "Success", "time_taken": str(end - start), "start_datetime": str(start_datetime), "end_datetime": str(end_datetime)}
+        task_result = json.dumps(task_result)
+        check_task_status(task_result)
 
-            print('calculating access precision - Map')
+        print('calculating access precision - Map')
 
-            MAP(data_file=obj_data_file, name_file=obj_names_file, cfg_file=model_cfg, weight_file=weight_file, model_name=body.get("model_name"))
+        MAP(data_file=obj_data_file, name_file=obj_names_file, cfg_file=model_cfg, weight_file=weight_file, model_name=body.get("model_name"), model_id=model_id)
 
     except Exception as e_:
         exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -466,12 +477,11 @@ def check_task_status(status):
     print('checking task status')
     try:
         status = json.loads(status)
-        user_id = status['user_id']
+        user_id = status.get('user_id')
         if user_id is None:
             user_id = "#"
         print("user-id", user_id)
         print("%s", status)
-        status["publisher"] = "alert"
         status = json.dumps(status)
         if 'Success' in status:
             # connect.master_redis.r.delete(key)
@@ -484,8 +494,9 @@ def check_task_status(status):
         time.sleep(30)
     except Exception as _e:
         exc_type, exc_obj, exc_tb = sys.exc_info()
-        print("check_task_status thread : exception in check_task_status " + str(_e) + ' ' + str(exc_tb.tb_lineno), level='error')
+        print("check_task_status thread : exception in check_task_status " + str(_e) + ' ' + str(exc_tb.tb_lineno))
         time.sleep(60)
+
 
 def clean_data(directories):
     print('calling the clean data function with dir ={}'.format(directories))
@@ -494,8 +505,11 @@ def clean_data(directories):
         print("removed {}".format(directory))
 
 
+# gpu location is the dir where the models folders are stored , working directory train is the dir where the darknet folder exists, deployments in the blob storage where the models that we are training are stored there
+# two files that is required , one is the train.sh which should be with the train python script and one is calc_map.sh that should be in the darknet folder(train.sh - to start training , calc_map.sh -> to run the calculation of MAP)
+
 def initialize_directoy():
-    for directory in [connect.config_json.get("gpu_video_location"), connect.config_json.get("working_directory_train"), connect.config_json.get("deployment_models")]:
+    for directory in [connect.config_json.get("gpu_video_location"), connect.config_json.get("working_directory_train")]:
         print(directory)
         if not os.path.exists(directory):
             os.makedirs(directory)
@@ -522,18 +536,32 @@ if __name__ == '__main__':
     print("darknet directory  exists = {} on location = {}".format(os.path.exists(os.path.join(connect.config_json.get("working_directory_train"), "darknet")), os.path.join(connect.config_json.get("working_directory_train"), "darknet")))
 
     try:
-        ##the data i required for mapping class name to class id , class id to media duration id , media duration ids to media id , and for the menu of the classes and model types
-        entity_id = 1
         class_mediaduration = {}
         mediaduration_mediaid = {}
         class_mapper = {}
         tags = {}
         model_type = {}
+        entity_mapper = {}
+        location_mapper = {}
+        table_data_4 = connect.query_database(sql='SELECT id, name FROM m_entity')
+        table_data_5 = connect.query_database(sql='SELECT id, name FROM m_location')
 
-        table_data = connect.query_database(sql='SELECT id, name FROM m_tags where entity_id ={}'.format(entity_id))
-        table_data_1 = connect.query_database(sql='SELECT name, conv_end_point FROM m_model_type')
+        for row in table_data_4[0]:
+            entity_mapper[str(row[0])] = str(row[1])
+            entity_mapper[str(row[1])] = str(row[0])
+
+        for row in table_data_5[0]:
+            location_mapper[str(row[0])] = str(row[1])
+            location_mapper[str(row[1])] = str(row[0])
+
+        entity = list(connect.config_json.get('entity-location').keys())[0]
+        location = connect.config_json['entity-location'][entity]['locations'][0]
+
+        table_data = connect.query_database(sql='SELECT id, name FROM m_tags where entity_id ={}'.format(entity_mapper.get(entity)))
+        table_data_1 = connect.query_database(sql='SELECT id, name, conv_end_point FROM m_model_type')
         table_data_2 = connect.query_database(sql='SELECT tag_id, media_duration_id FROM media_tags_mapping')
         table_data_3 = connect.query_database(sql='SELECT id, media_status_id FROM t_media_durations')
+
         i = 0
         for row in table_data[0]:
             class_mapper[str(row[0])] = str(row[1])
@@ -543,7 +571,7 @@ if __name__ == '__main__':
 
         i = 0
         for row in table_data_1[0]:
-            model_type[str(i)] = {"model_type": str(row[0]), "conv_end_point": str(row[1])}
+            model_type[str(i)] = {"id": str(row[0]), "model_type": str(row[1]), "conv_end_point": str(row[2])}
             i = i + 1
 
         for row in table_data_2[0]:
@@ -573,6 +601,7 @@ if __name__ == '__main__':
         ## getting all the annotation and image endpoints of the selected classes#########
 
         tag_names = []
+
         for tag in tag_nos.split(','):
             tag_names.append(tags[tag.strip()])
         tags_ids = [str(class_mapper.get(str(tag_name))) for tag_name in tag_names]
@@ -594,10 +623,11 @@ if __name__ == '__main__':
 
         model = model_type[model_nos]
 
-        body = {"model_name": model_name, "config": {"model_height": model_height, "model_width": model_width, "batch": model_batch, "subdivision": model_subdivisions, "iterations": model_iterations},
-                "conv_end_point": model["conv_end_point"], "model_type": model["model_type"], "end_points": blob_end_points}
+        body = {"total_classes": len(tag_names), "model_name": model_name, "config": {"model_height": model_height, "model_width": model_width, "batch": model_batch, "subdivision": model_subdivisions, "iterations": model_iterations},
+                "conv_end_point": model["conv_end_point"], "model_type": model["model_type"], "end_points": blob_end_points, "model_type_id": model["id"], "location_id": location_mapper.get(location)}
 
         train(body)
+
 
 
     except Exception as e_:
