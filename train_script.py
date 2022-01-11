@@ -587,10 +587,10 @@ if __name__ == '__main__':
 
         for key, value in tags.items():
             print(str(key) + ". " + str(value))
-        tag_nos = input("Select the tags like Eg:  1,3,5,6 \n")
+        tag_nos = input("Select the tags like Eg:  1,3,5,6 for testing please enter 0,1  \n")
         for key, value in model_type.items():
             print(str(key) + ". " + str(value["model_type"]))
-        model_nos = input("Select any anyone model type like Eg: 3 \n")
+        model_nos = input("Select any anyone model type like Eg: 3 for testing please enter 0 \n")
         model_name = input("enter the name of model \n")
         model_height = input("enter the model height \n")
         model_width = input("enter the model width \n")
