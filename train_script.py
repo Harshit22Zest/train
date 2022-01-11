@@ -98,7 +98,7 @@ class Compressor:
         zipf.extractall(os.path.split(zip_directory)[0])
 
 
-connect = Utility(configuration=constants.platform_utility_configuration, rabbitmq_consumer=constants.rabbitmq_consumer, rabbitmq_publisher=constants.rabbitmq_publisher)
+connect = Utility(configuration=constants.platform_utility_configuration, rabbitmq_consumer=constants.rabbitmq_consumer, rabbitmq_publisher=constants.train_api_publisher)
 executor = ThreadPoolExecutor(max_workers=constants.max_workers)
 azure_storage = AzureStorage(connect=connect)
 
@@ -168,7 +168,7 @@ def config_generator(config, model_name, obj_file, model_type):
         sample = data["sample"]
         if not os.path.exists(sample):
             print("downloading  in {} from {}".format(sample, os.path.join(connect.config_json.get("sample_cfg"), os.path.split(sample)[1])))
-            azure_storage.download(os.path.join(connect.config_json.get("sample_cfg"), os.path.split(sample)[1]), sample,container_name=connect.config_json["model_container"])
+            azure_storage.download(os.path.join(connect.config_json.get("sample_cfg"), os.path.split(sample)[1]), sample, container_name=connect.config_json["model_container"])
 
         model_cfg = os.path.join(os.path.split(obj_file)[0], data["model"] + data["model_name"] + ".cfg")
         print('the cfg will be stored at {}'.format(model_cfg))
@@ -374,7 +374,6 @@ def train(body):
                 obj_data.write("names = {}\n".format(os.path.join(train_test_artifacts_end_point, "obj.names")))
                 obj_data.write("backup = {}\n".format(os.path.join(train_test_artifacts_end_point, "backup")))
 
-
             obj_names_file = os.path.join(train_test_artifacts_end_point, "obj.names")
             obj_data_file = os.path.join(train_test_artifacts_end_point, "obj.data")
             # azure_storage.download(body.get("config_end_point"), os.path.join(train_test_artifacts_end_point, os.path.split(body.get("config_end_point"))[1]), container_name=connect.config_json.get("model_container"))
@@ -387,12 +386,11 @@ def train(body):
             with open(os.path.join(train_test_artifacts_end_point, "input.txt"), "w+") as input_data:
                 input_data.write("image_end_point = {}, exits = {} \n".format(local_image_end_point, os.path.exists(local_image_end_point)))
                 input_data.write("annotation_end_point = {} , exits = {} \n".format(local_annotation_end_point, os.path.exists(local_annotation_end_point)))
-                input_data.write("names file endpoint = {} , exits = {}\n".format(os.path.join(train_test_artifacts_end_point, "obj.names"),  os.path.exists(os.path.join(train_test_artifacts_end_point, "obj.names"))))
+                input_data.write("names file endpoint = {} , exits = {}\n".format(os.path.join(train_test_artifacts_end_point, "obj.names"), os.path.exists(os.path.join(train_test_artifacts_end_point, "obj.names"))))
                 input_data.write("data file endpoint = {}, exits = {}\n".format(os.path.join(train_test_artifacts_end_point, "obj.data"), os.path.exists(os.path.join(train_test_artifacts_end_point, "obj.data"))))
-                input_data.write("conv file endpoint = {}, exits = {} \n".format(os.path.join(train_test_artifacts_end_point, os.path.split(body.get("conv_end_point"))[1]),   os.path.exists(os.path.join(train_test_artifacts_end_point, os.path.split(body.get("conv_end_point"))[1]))))
-                #input_data.write("sample cfg file endpoint = {}, exits = {}\n".format(os.path.join(train_test_artifacts_end_point,"sample.cfg"),  os.path.exists(os.path.join(train_test_artifacts_end_point,"sample.cfg"))))
+                input_data.write("conv file endpoint = {}, exits = {} \n".format(os.path.join(train_test_artifacts_end_point, os.path.split(body.get("conv_end_point"))[1]), os.path.exists(os.path.join(train_test_artifacts_end_point, os.path.split(body.get("conv_end_point"))[1]))))
+                # input_data.write("sample cfg file endpoint = {}, exits = {}\n".format(os.path.join(train_test_artifacts_end_point,"sample.cfg"),  os.path.exists(os.path.join(train_test_artifacts_end_point,"sample.cfg"))))
                 input_data.write("new created cfg file endpoint = {}, exits = {} \n".format(model_cfg, os.path.exists(model_cfg)))
-
 
             try:
                 print("Training started")
@@ -430,7 +428,7 @@ def train(body):
 
             # local_config_path = os.path.join(train_test_artifacts_end_point, os.path.split(body.get("config_end_point"))[1])
 
-            #clean_data(directories=[train_test_artifacts_end_point, local_annotation_end_point, local_image_end_point])
+            # clean_data(directories=[train_test_artifacts_end_point, local_annotation_end_point, local_image_end_point])
 
             blob_locations = [os.path.join(connect.config_json["deployment_models"], body.get("model_name") + "/obj.data"), os.path.join(connect.config_json["deployment_models"], body.get("model_name") + "/obj.names"), os.path.join(connect.config_json["deployment_models"], os.path.join(body.get("model_name"), model_file[0])), os.path.join(os.path.join(connect.config_json["deployment_models"], body.get("model_name")), os.path.split(local_config_path)[1])]
             sql = '''update m_model set end_point = "{}" where name = "{}"'''.format(str(blob_locations), body.get("model_name"))
@@ -448,6 +446,7 @@ def train(body):
             end = time.time()
             task_result = {"user_id": str(body.get('user_id')), "name": "train done successfully for model name  {}".format(body.get('model_name')), "status": "Success", "time_taken": str(end - start), "start_datetime": str(start_datetime), "end_datetime": str(end_datetime)}
             task_result = json.dumps(task_result)
+            check_task_status(task_result)
 
             print('calculating access precision - Map')
 
@@ -460,7 +459,33 @@ def train(body):
         end = time.time()
         task_result = {"user_id": str(body.get('user_id')), "name": "Exception while training  at {}".format(str(exc_tb.tb_lineno)), "status": "Failed", "time_taken": str(end - start), "start_datetime": str(start_datetime), "end_datetime": str(end_datetime)}
         task_result = json.dumps(task_result)
+        check_task_status(task_result)
 
+
+def check_task_status(status):
+    print('checking task status')
+    try:
+        status = json.loads(status)
+        user_id = status['user_id']
+        if user_id is None:
+            user_id = "#"
+        print("user-id", user_id)
+        print("%s", status)
+        status["publisher"] = "alert"
+        status = json.dumps(status)
+        if 'Success' in status:
+            # connect.master_redis.r.delete(key)
+            connect.publish(event=status, routing_key="task.{}".format(user_id))
+            print("published task success")
+        elif 'Failed' in status:
+            # connect.master_redis.r.delete(key)
+            connect.publish(event=status, routing_key="task.{}".format(user_id))
+            print("published task failed")
+        time.sleep(30)
+    except Exception as _e:
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        print("check_task_status thread : exception in check_task_status " + str(_e) + ' ' + str(exc_tb.tb_lineno), level='error')
+        time.sleep(60)
 
 def clean_data(directories):
     print('calling the clean data function with dir ={}'.format(directories))
@@ -497,7 +522,7 @@ if __name__ == '__main__':
     print("darknet directory  exists = {} on location = {}".format(os.path.exists(os.path.join(connect.config_json.get("working_directory_train"), "darknet")), os.path.join(connect.config_json.get("working_directory_train"), "darknet")))
 
     try:
-
+        ##the data i required for mapping class name to class id , class id to media duration id , media duration ids to media id , and for the menu of the classes and model types
         entity_id = 1
         class_mediaduration = {}
         mediaduration_mediaid = {}
@@ -530,6 +555,8 @@ if __name__ == '__main__':
         for row in table_data_3[0]:
             mediaduration_mediaid[str(row[0])] = str(row[1])
 
+        ## taking inputs from the user #####################################################33
+
         for key, value in tags.items():
             print(str(key) + ". " + str(value))
         tag_nos = input("Select the tags like Eg:  1,3,5,6 \n")
@@ -543,22 +570,25 @@ if __name__ == '__main__':
         model_subdivisions = input("enter the model subdivisions \n")
         model_iterations = input("enter the model iterations \n")
 
+        ## getting all the annotation and image endpoints of the selected classes#########
+
         tag_names = []
         for tag in tag_nos.split(','):
             tag_names.append(tags[tag.strip()])
         tags_ids = [str(class_mapper.get(str(tag_name))) for tag_name in tag_names]
         media_duration_lists = [class_mediaduration.get(str(tag_id)) for tag_id in tags_ids]
         media_duration_ids = []
-        for i in media_duration_lists:
-            if i is None:
-                media_duration_lists.remove(i)
+
         for media_duration_id_list in media_duration_lists:
-            for media_duration_id in media_duration_id_list:
-                if media_duration_id not in media_duration_ids:
-                    media_duration_ids.append(media_duration_id)
-        media_ids = [str(mediaduration_mediaid.get(str(media_duration_id))) for media_duration_id in media_duration_ids]
+            media_duration_ids.extend(media_duration_id_list)
+
+        media_ids = []
+        for media_duration_id in media_duration_ids:
+            if str(mediaduration_mediaid.get(str(media_duration_id))) not in media_ids:
+                media_ids.append(str(mediaduration_mediaid.get(str(media_duration_id))))
+
         blob_end_points = []
-        media_id_s = connect.query_database('select image_end_point, annotation_end_point from t_media where id in ({}) and state_id in ("6")'.format(','.join("'"+media_id+"'" for media_id in media_ids)))
+        media_id_s = connect.query_database('select image_end_point, annotation_end_point from t_media where id in ({}) and state_id in ("6")'.format(','.join("'" + media_id + "'" for media_id in media_ids)))
         for media_id in media_id_s[0]:
             blob_end_points.append({'blob_image_end_point': media_id[0], 'blob_annotation_end_point': media_id[1]})
 
@@ -573,4 +603,3 @@ if __name__ == '__main__':
     except Exception as e_:
         exc_type, exc_obj, exc_tb = sys.exc_info()
         print("Exception occurred in main : " + str(e_) + ' ' + str(exc_tb.tb_lineno))
-

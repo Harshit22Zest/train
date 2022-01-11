@@ -5,6 +5,7 @@ import os
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(BASE_DIR)
 max_workers = 5
+train_api_publisher = {"exchange": "Task", "routing_key": "task.#", "exchange_type": 'topic', "durable": 'False'}
 rabbitmq_publisher = {"exchange": "Event", "routing_key": "train_status.#", "exchange_type": 'topic', "durable": 'False'}
 rabbitmq_consumer = {"exchange": "Event", "routing_keys": ["train.#"], "exchange_type": 'topic', "durable": 'False', "queue": "train_jobs_queue"}
 platform_utility_configuration = {"debug": 1,
