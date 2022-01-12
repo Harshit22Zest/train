@@ -152,8 +152,8 @@ def get_annotations(blob_annotation_end_point, blob_image_end_point):
 def config_generator(config, model_name, obj_file, model_type, total_classes):
     print('config generator is called -> config = {} model_name = {} obj_file = {} model_type = {}'.format(config, model_name, obj_file, model_type))
     try:
-        data = {"height": str(config.get('model_height')),
-                "width": str(config.get('model_width')),
+        data = {"height": str(config.get('modelHeight')),
+                "width": str(config.get('modelWidth')),
                 "batch": str(config.get('batch')),
                 "subdivision": str(config.get('subdivision')),
                 "iterations": str(config.get('iterations')),
@@ -623,7 +623,7 @@ if __name__ == '__main__':
 
         model = model_type[model_nos]
 
-        body = {"total_classes": len(tag_names), "model_name": model_name, "config": {"model_height": model_height, "model_width": model_width, "batch": model_batch, "subdivision": model_subdivisions, "iterations": model_iterations},
+        body = {"total_classes": len(tag_names), "model_name": model_name, "config": {"modelHeight": model_height, "modelWidth": model_width, "batch": model_batch, "subdivision": model_subdivisions, "iterations": model_iterations},
                 "conv_end_point": model["conv_end_point"], "model_type": model["model_type"], "end_points": blob_end_points, "model_type_id": model["id"], "location_id": location_mapper.get(location)}
 
         train(body)
